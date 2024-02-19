@@ -27,49 +27,50 @@ def spectral_de_normalize_torch(magnitudes):
     output = dynamic_range_decompression_torch(magnitudes)
     return output
 
+
 """ =========== Constants =============== """""
 SAMPLE_RATE = 44100
 
 """
 The class imports helps import the Dataset into the training.
 """
+
+
 class CustomImageDataset(Dataset):
     def __init__(self, dataset_paths_file, img_dir):
         self.sample_rate = SAMPLE_RATE
         self.audio_labels = pd.read_csv(dataset_paths_file)
         self.audio_dir = img_dir
         self.duration_in_sec = 5.0
-        self.num_samples = int(self.duration_in_sec*self.sample_rate)
+        self.num_samples = int(self.duration_in_sec * self.sample_rate)
         self.generator = torch.manual_seed(0)
-
 
     def __len__(self):
         return len(self.img_labels)
 
-
     def __getitem__(self, idx):
         original_audio_path = os.path.join(self.audio_dir, self.audio_labels.iloc[idx, 0])
         no_drums_audio_path = os.path.join(self.audio_dir, self.audio_labels.iloc[idx, 1])
-        orig_waveform,sr1 = torchaudio.load(original_audio_path)
-        no_drums_waveform,sr2 = torchaudio.load(no_drums_audio_path)
+        orig_waveform, sr1 = torchaudio.load(original_audio_path)
+        no_drums_waveform, sr2 = torchaudio.load(no_drums_audio_path)
         label = self.audio_labels.iloc[idx, 2]
 
         # if the data is not in the correct sample rate, we resample it.
         if sr1 != self.sample_rate:
-            orig_waveform = torchaudio.functional.resample(orig_waveform,sr1,self.sample_rate)
+            orig_waveform = torchaudio.functional.resample(orig_waveform, sr1, self.sample_rate)
         if sr2 != self.sample_rate:
-            no_drums_waveform = torchaudio.functional.resample(no_drums_waveform,sr2,self.sample_rate)
+            no_drums_waveform = torchaudio.functional.resample(no_drums_waveform, sr2, self.sample_rate)
 
-        orig_waveform = self.crop_audio_randomly(orig_waveform,self.num_samples,self.generator)
+        orig_waveform = self.crop_audio_randomly(orig_waveform, self.num_samples, self.generator)
         no_drums_waveform = self.crop_audio_randomly(no_drums_waveform)
         # create log mel spec
-        log_mel_orig,stft_orig = self._create_mel_spectogram(orig_waveform)
-        log_mel_no_drums,stft_nodrums =self._create_mel_spectogram(no_drums_waveform)
-        return log_mel_orig,log_mel_no_drums,orig_waveform,no_drums_waveform
+        log_mel_orig, stft_orig = self._create_mel_spectogram(orig_waveform)
+        log_mel_no_drums, stft_nodrums = self._create_mel_spectogram(no_drums_waveform)
+        return log_mel_orig, log_mel_no_drums, orig_waveform, no_drums_waveform
 
     import torch
 
-    def crop_audio_randomly(self,audio_tensor, length, generator=None):
+    def crop_audio_randomly(self, audio_tensor, length, generator=None):
         """
         Crops the audio tensor to a specified length at a random start index,
         using a PyTorch generator for randomness.
@@ -101,6 +102,7 @@ class CustomImageDataset(Dataset):
     """
     Creates a mel spectogram.
     """
+
     def _create_mel_spectogram(self, waveform):
         if torch.min(waveform) < -1.0:
             print("train min value is ", torch.min(waveform))
@@ -155,4 +157,3 @@ class CustomImageDataset(Dataset):
         )
 
         return mel[0], stft_spec[0]
-

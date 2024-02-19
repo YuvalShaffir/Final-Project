@@ -25,22 +25,42 @@ class Pipe:
     """
     This class is a pipeline of the model
     """
-    def __int__(self, path_to_models_dir):
+    def __int__(self, path_to_models_dir: str):
         self.path_to_models_dir = path_to_models_dir
         # path_to_model = "/content/drive/My Drive/final_unet"
         # from diffusers.models import AutoencoderKL
-        vae_path = os.path.join(self.path_to_models_dir, 'vae')
-        unet_path = os.path.join(self.path_to_models_dir, 'final_unet')
-        vocoder_path = os.path.join(self.path_to_models_dir, 'vocoder')
-        scheduler_path = os.path.join(self.path_to_models_dir, 'scheduler')
+
+        scheduler_path, unet_path, vae_path, vocoder_path = self._get_model_paths()
+
         self.p_device = self._choose_device()
-        self.vae = torch.load(vae_path, map_location=p_device, weights_only=False).eval()
-        self.vocoder = torch.load(vocoder_path, map_location=p_device).eval()
-        self.scheduler = torch.load(scheduler_path)
-        self.unet = torch.load(unet_path).evalwww().to(p_device)
+
+        self._load_models(scheduler_path, unet_path, vae_path, vocoder_path)
+
         accelerator = Accelerator()
+
         self.vae, self.vocoder, self.scheduler, self.unet = accelerator.prepare(self.vae, self.vocoder, self.scheduler,
                                                                                 self.unet)
+
+    def _get_model_paths(self):
+        """ Gets the paths to each model """
+        try:
+            vae_path = os.path.join(self.path_to_models_dir, 'vae')
+            unet_path = os.path.join(self.path_to_models_dir, 'final_unet')
+            vocoder_path = os.path.join(self.path_to_models_dir, 'vocoder')
+            scheduler_path = os.path.join(self.path_to_models_dir, 'scheduler')
+            return scheduler_path, unet_path, vae_path, vocoder_path
+        except Exception as e:
+            print(f"Error in _get_model_paths(), description: {e}")
+
+    def _load_models(self, scheduler_path, unet_path, vae_path, vocoder_path):
+        """ Load the models """
+        try:
+            self.vae = torch.load(vae_path, map_location=self.p_device, weights_only=False).eval()
+            self.vocoder = torch.load(vocoder_path, map_location=self.p_device).eval()
+            self.scheduler = torch.load(scheduler_path)
+            self.unet = torch.load(unet_path).evalwww().to(self.p_device)
+        except Exception as e:
+            print(f"Error in _load_models(), description: {e}")
 
     def _choose_device(self):
         if torch.cuda.is_available():

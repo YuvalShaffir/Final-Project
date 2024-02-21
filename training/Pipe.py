@@ -3,13 +3,14 @@
 # !pip install torch
 # !pip install accelerate
 import inspect
+from typing import List
 
 import scipy
 import os
-# from diffusers import AudioLDM2Pipeline
-# from diffusers.models import AutoencoderKL
-# from diffusers import StableDiffusionPipeline
-# from transformers import SpeechT5HifiGan
+from diffusers import AudioLDM2Pipeline
+from diffusers.models import AutoencoderKL
+from diffusers import StableDiffusionPipeline
+from transformers import SpeechT5HifiGan
 import torch
 from IPython.display import Audio
 from accelerate import Accelerator
@@ -25,7 +26,7 @@ class Pipe:
     """
     This class is a pipeline of the model
     """
-    def __int__(self, path_to_models_dir: str):
+    def __init__(self, path_to_models_dir: str):
         self.path_to_models_dir = path_to_models_dir
         # path_to_model = "/content/drive/My Drive/final_unet"
         # from diffusers.models import AutoencoderKL
@@ -34,31 +35,32 @@ class Pipe:
 
         self.p_device = self._choose_device()
 
-        self._load_models(scheduler_path, unet_path, vae_path, vocoder_path)
+        self.vae, self.vocoder, self.scheduler, self.unet = self._load_models(scheduler_path, unet_path, vae_path,
+                                                                              vocoder_path)
 
         accelerator = Accelerator()
 
-        self.vae, self.vocoder, self.scheduler, self.unet = accelerator.prepare(self.vae, self.vocoder, self.scheduler,
-                                                                                self.unet)
+        self.vae, self.vocoder, self.scheduler, self.unet = accelerator.prepare(self.vae, self.vocoder,
+                                                                                self.scheduler, self.unet)
 
     def _get_model_paths(self):
         """ Gets the paths to each model """
         try:
-            vae_path = os.path.join(self.path_to_models_dir, 'vae')
-            unet_path = os.path.join(self.path_to_models_dir, 'final_unet')
-            vocoder_path = os.path.join(self.path_to_models_dir, 'vocoder')
-            scheduler_path = os.path.join(self.path_to_models_dir, 'scheduler')
-            return scheduler_path, unet_path, vae_path, vocoder_path
+            [unet_path, scheduler_path, vae_path, vocoder_path] = self._get_dir_paths(directory="models")
+            # print(f"models paths: \n {unet_path} \n {scheduler_path} \n {vae_path} \n {vocoder_path} \n")
+            return [scheduler_path, unet_path, vae_path, vocoder_path]
         except Exception as e:
             print(f"Error in _get_model_paths(), description: {e}")
 
-    def _load_models(self, scheduler_path, unet_path, vae_path, vocoder_path):
+    def _load_models(self, scheduler_path: str, unet_path: str, vae_path: str, vocoder_path: str):
         """ Load the models """
         try:
-            self.vae = torch.load(vae_path, map_location=self.p_device, weights_only=False).eval()
-            self.vocoder = torch.load(vocoder_path, map_location=self.p_device).eval()
-            self.scheduler = torch.load(scheduler_path)
-            self.unet = torch.load(unet_path).evalwww().to(self.p_device)
+            vae = torch.load(vae_path, map_location=self.p_device, weights_only=False).eval()
+            vocoder = torch.load(vocoder_path, map_location=self.p_device).eval()
+            scheduler = torch.load(scheduler_path)
+            unet = torch.load(unet_path).to(self.p_device)
+            # print(f"models: \n {vae} \n {vocoder} \n {scheduler} \n {unet} \n")
+            return vae, vocoder, scheduler, unet
         except Exception as e:
             print(f"Error in _load_models(), description: {e}")
 
@@ -81,6 +83,15 @@ class Pipe:
         return self.vae.encode(latents).latent_dist.sample() * 0.18215
 
     def _mel_spectrogram_to_waveform(self, mel_spectrogram):
+        """
+        Convert a mel spectrogram to waveform using the vocoder.
+
+        Args:
+            mel_spectrogram (torch.Tensor): Mel spectrogram tensor.
+
+        Returns:
+            torch.Tensor: Waveform tensor.
+        """
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
             print("was here")
@@ -114,6 +125,17 @@ class Pipe:
         return extra_step_kwargs
 
     def _inference(self, extra_step_kwargs, latents, n):
+        """
+        Perform inference using the trained model.
+
+        Args:
+            extra_step_kwargs (dict): Extra keyword arguments for the inference step.
+            latents (torch.Tensor): Latent vectors.
+            n (torch.Tensor): Encoder hidden states.
+
+        Returns:
+            torch.Tensor: Updated latent vectors after inference.
+        """
         num_inference_steps = 200
         self.scheduler.set_timesteps(num_inference_steps, 'cuda')
         timesteps = self.scheduler.timesteps
@@ -131,6 +153,21 @@ class Pipe:
                 noise_pred = self.unet(latents, timestep=t, encoder_hidden_states=n, return_dict=False)[0]
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
+    def _get_dir_paths(self, directory: str) -> List[str]:
+        """
+        :return: Returns to paths to all the files in the given directory
+        """
+        file_paths = []
+        directory_full_path = os.path.abspath(directory)
+        # Walk through all files and directories in the given directory
+        for root, directories, files in os.walk(directory_full_path):
+            for filename in files:
+                # Construct the full path to the file
+                file_path = os.path.join(root, filename)
+                # Append the file path to the list
+                file_paths.append(file_path)
+        return file_paths
+
     def run_pipe(self):
         eta = ETA_VALUE
         generator = torch.Generator(device='cuda')
@@ -146,3 +183,4 @@ class Pipe:
         audio = audio[:, :original_waveform_length].detach().numpy()
         # display audio
         Audio(audio, rate=16000)
+

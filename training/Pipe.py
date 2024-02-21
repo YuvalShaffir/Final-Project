@@ -84,7 +84,7 @@ class Pipe:
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
             print("was here")
-
+        # check
         waveform = self.vocoder(mel_spectrogram)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         waveform = waveform.cpu().float()
